@@ -14,6 +14,7 @@ void Buzzer_ProcessEvent(void);
 
 void Buzzer_Click(void);         // ~3 ms tick, skipped if something else is playing
 void Buzzer_Alarm(void);         // ~1 s two-tone alarm
+void Buzzer_Confirm(bool on);    // short rising (on) / falling (off) chirp
 void Buzzer_Stop(void);
 bool Buzzer_IsBusy(void);
 

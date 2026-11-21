@@ -63,9 +63,11 @@ Device support is implemented in zigbee2mqtt and SLS Gateway
 
 * buzzer - alarm sound while alert_threshold is exceeded (checked every 5 s over the last minute), repeats every 10 s
 * buzzer_clicks - click on every registered particle
-* display - optional OLED on/off
+* display - optional OLED on/off; when off, a button press turns it on for 1 minute
 
 Optional OLED: SSD1306 128x32 (I2C address 0x3C), SCL to P0.5, SDA to P0.6. It is detected at boot; without it the firmware does no display work at all. It shows the dose rate, CPM, the network status and an alert mark, refreshed every 5 s (only changed parts are redrawn). During the first minute the value is extrapolated and marked with "~".
+
+Optional button between P1.2 and GND (internal pull-up, no resistor needed): a short press silences an active alarm until the level drops and wakes the display; a long press (2 s) toggles buzzer_clicks.
 
 New settings such as buzzer_clicks need the external converter `z2m/diyruz_geiger.mjs` (Zigbee2MQTT 2.x) until the built-in definition is updated.
 

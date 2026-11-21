@@ -37,6 +37,8 @@ typedef struct {
 static const note_t clickNotes[] = {{TONE_4K, 3}};
 static const note_t alarmNotes[] = {{TONE_4K, 150}, {TONE_OFF, 80}, {TONE_3K, 150}, {TONE_OFF, 80},
                                     {TONE_4K, 150}, {TONE_OFF, 80}, {TONE_3K, 150}};
+static const note_t confirmOnNotes[] = {{TONE_2K, 60}, {TONE_OFF, 30}, {TONE_4K, 80}};
+static const note_t confirmOffNotes[] = {{TONE_4K, 60}, {TONE_OFF, 30}, {TONE_2K, 80}};
 
 static uint8 buzzerTaskId;
 static uint16 buzzerEvent;
@@ -110,3 +112,11 @@ void Buzzer_Click(void) {
 }
 
 void Buzzer_Alarm(void) { buzzerPlay(alarmNotes, sizeof(alarmNotes) / sizeof(note_t)); }
+
+void Buzzer_Confirm(bool on) {
+    if (on) {
+        buzzerPlay(confirmOnNotes, sizeof(confirmOnNotes) / sizeof(note_t));
+    } else {
+        buzzerPlay(confirmOffNotes, sizeof(confirmOffNotes) / sizeof(note_t));
+    }
+}

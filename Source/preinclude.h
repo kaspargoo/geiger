@@ -51,6 +51,13 @@
 #define OCM_DATA_PORT 0 // SDA = P0.6
 #define OCM_DATA_PIN 6
 
+// Optional button to GND, polled, internal pull-up
+#define APP_BUTTON_SBIT P1_2 // comment out to build without the button
+#define APP_BUTTON_BV BV(2)
+#define APP_BUTTON_SEL P1SEL
+#define APP_BUTTON_DIR P1DIR
+#define APP_BUTTON_INP P1INP
+
 #if defined(HAL_BOARD_TARGET)
 #define APP_TX_POWER TX_PWR_PLUS_19
 #define APP_HW_NAME "DIYRuZ" // shown on the boot screen

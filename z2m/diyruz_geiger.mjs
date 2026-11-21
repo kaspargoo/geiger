@@ -51,7 +51,7 @@ export default {
         switchAttr('led_feedback', 0xf001, 'Blink the LED on every particle'),
         switchAttr('buzzer_feedback', 0xf002, 'Alarm sound when alert_threshold is exceeded'),
         switchAttr('buzzer_clicks', 0xf006, 'Click on every particle'),
-        switchAttr('display', 0xf007, 'OLED display on/off. No effect without a display'),
+        switchAttr('display', 0xf007, 'OLED on (off: only for 1 minute after a button press). No effect without a display'),
         m.numeric({
             name: 'sensitivity',
             cluster: config,

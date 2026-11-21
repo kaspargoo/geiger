@@ -62,8 +62,10 @@ static uint8 reportSlot = 0;
 
 static bool lastAlertStatus = FALSE; // alert state sent over Zigbee (On/Off), evaluated once per minute
 static bool alarmActive = FALSE;     // local alert state, evaluated every slot
+static bool alarmMuted = FALSE;      // alarm sound silenced by the button until the alert clears
 
 static bool displayReady = FALSE; // splash screen is over
+static bool displayWoken = FALSE; // display temporarily on after a button press
 static display_data_t displayData;
 
 /*********************************************************************
@@ -75,6 +77,7 @@ static void zclApp_Report(void);
 static uint32 zclApp_CalculateUrh(uint16 cpm);
 static void zclApp_UpdateAlarm(bool alert);
 static void zclApp_ApplyConfig(void);
+static void zclApp_DisplayWake(void);
 static display_net_t zclApp_NetState(void);
 static void zclApp_BasicResetCB(void);
 static void zclApp_RestoreAttributesFromNV(void);
@@ -82,6 +85,11 @@ static void zclApp_SaveAttributesToNV(void);
 
 static ZStatus_t zclApp_ReadWriteAuthCB(afAddrType_t *srcAddr, zclAttrRec_t *pAttr, uint8 oper);
 static void zclApp_RadioactiveEventCB(uint8 portNum);
+
+#ifdef APP_BUTTON_SBIT
+static void zclApp_ButtonInit(void);
+static void zclApp_ButtonPoll(void);
+#endif
 
 /*********************************************************************
  * ZCL General Profile Callback table
@@ -121,6 +129,10 @@ void zclApp_Init(byte task_id) {
     LREP("Build %s \r\n", zclApp_DateCodeNT);
 
     Buzzer_Init(zclApp_TaskID, APP_BUZZER_EVT);
+#ifdef APP_BUTTON_SBIT
+    zclApp_ButtonInit();
+    osal_start_reload_timer(zclApp_TaskID, APP_BUTTON_EVT, APP_BUTTON_POLL_DELAY);
+#endif
 
     displayData.clicks = zclApp_Config.BuzzerClicks;
     displayData.estimate = TRUE;
@@ -169,13 +181,20 @@ uint16 zclApp_event_loop(uint8 task_id, uint16 events) {
         return (events ^ APP_BUZZER_EVT);
     }
 
+#ifdef APP_BUTTON_SBIT
+    if (events & APP_BUTTON_EVT) {
+        zclApp_ButtonPoll();
+        return (events ^ APP_BUTTON_EVT);
+    }
+#endif
+
     if (events & APP_TICK_EVT) {
         zclApp_Tick();
         return (events ^ APP_TICK_EVT);
     }
 
     if (events & APP_ALARM_EVT) {
-        if (alarmActive && zclApp_Config.BuzzerFeedback) {
+        if (alarmActive && !alarmMuted && zclApp_Config.BuzzerFeedback) {
             Buzzer_Alarm();
         }
         return (events ^ APP_ALARM_EVT);
@@ -200,6 +219,14 @@ uint16 zclApp_event_loop(uint8 task_id, uint16 events) {
             Display_Power(FALSE);
         }
         return (events ^ APP_DISPLAY_MAIN_EVT);
+    }
+
+    if (events & APP_DISPLAY_TIMEOUT_EVT) {
+        displayWoken = FALSE;
+        if (!zclApp_Config.DisplayEnabled) {
+            Display_Power(FALSE);
+        }
+        return (events ^ APP_DISPLAY_TIMEOUT_EVT);
     }
 
     if (events & APP_SAVE_ATTRS_EVT) {
@@ -299,6 +326,7 @@ static void zclApp_UpdateAlarm(bool alert) {
         return;
     }
     alarmActive = alert;
+    alarmMuted = FALSE;
     LREP("alarmActive=%d\r\n", alarmActive);
     if (alert) {
         if (zclApp_Config.BuzzerFeedback) {
@@ -310,7 +338,7 @@ static void zclApp_UpdateAlarm(bool alert) {
     }
 }
 
-/* Called after settings were changed */
+/* Called after settings were changed (from Zigbee or by the button) */
 static void zclApp_ApplyConfig(void) {
     displayData.clicks = zclApp_Config.BuzzerClicks;
     if (!zclApp_Config.BuzzerFeedback) {
@@ -326,10 +354,77 @@ static void zclApp_ApplyConfig(void) {
         } else {
             Display_Update(&displayData);
         }
-    } else if (Display_IsOn()) {
+    } else if (Display_IsOn() && !displayWoken) {
         Display_Power(FALSE);
     }
 }
+
+/* Button: turn the display on for APP_DISPLAY_WAKE_TIME (only matters when it is disabled) */
+static void zclApp_DisplayWake(void) {
+    if (!displayReady) {
+        return;
+    }
+    if (!Display_IsOn()) {
+        Display_Power(TRUE);
+        Display_ShowMain(&displayData);
+    }
+    if (!zclApp_Config.DisplayEnabled) {
+        displayWoken = TRUE;
+        osal_start_timerEx(zclApp_TaskID, APP_DISPLAY_TIMEOUT_EVT, APP_DISPLAY_WAKE_TIME);
+    }
+}
+
+#ifdef APP_BUTTON_SBIT
+/*
+ * Button to GND, internal pull-up. Polled (no extra interrupt sharing with the counter).
+ *  short press: silence an active alarm, otherwise wake the display for a minute
+ *  long press : toggle click sound
+ */
+static uint8 buttonTicks = 0;
+static bool buttonLongDone = FALSE;
+
+static void zclApp_ButtonInit(void) {
+    APP_BUTTON_SEL &= ~APP_BUTTON_BV;
+    APP_BUTTON_DIR &= ~APP_BUTTON_BV;
+    APP_BUTTON_INP &= ~APP_BUTTON_BV; // pull-up/down enabled (port pull direction defaults to up)
+}
+
+static void zclApp_ButtonShortPress(void) {
+    LREPMaster("Button short\r\n");
+    if (alarmActive && !alarmMuted) {
+        alarmMuted = TRUE;
+        Buzzer_Stop();
+    }
+    zclApp_DisplayWake();
+}
+
+static void zclApp_ButtonLongPress(void) {
+    zclApp_Config.BuzzerClicks = !zclApp_Config.BuzzerClicks;
+    LREP("Button long, clicks=%d\r\n", zclApp_Config.BuzzerClicks);
+    Buzzer_Confirm(zclApp_Config.BuzzerClicks);
+    zclApp_DisplayWake();
+    osal_start_timerEx(zclApp_TaskID, APP_SAVE_ATTRS_EVT, 2000);
+    bdb_RepChangedAttrValue(zclApp_FirstEP.EndPoint, ILLUMINANCE_CONFIG, ATTRID_RADIATION_BUZZER_CLICKS);
+}
+
+static void zclApp_ButtonPoll(void) {
+    if (!APP_BUTTON_SBIT) { // pressed (active low)
+        if (buttonTicks < 0xFF) {
+            buttonTicks++;
+        }
+        if (!buttonLongDone && (uint16)buttonTicks * APP_BUTTON_POLL_DELAY >= APP_BUTTON_LONG_PRESS) {
+            buttonLongDone = TRUE;
+            zclApp_ButtonLongPress();
+        }
+    } else {
+        if (buttonTicks >= 2 && !buttonLongDone) { // >= 100 ms debounce
+            zclApp_ButtonShortPress();
+        }
+        buttonTicks = 0;
+        buttonLongDone = FALSE;
+    }
+}
+#endif
 
 static void zclApp_Report(void) {
     // the window holds exactly the last minute here: reports happen every APP_WINDOW_SLOTS slots

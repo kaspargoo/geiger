@@ -21,7 +21,10 @@ extern "C" {
 
 #define APP_SPLASH_DELAY 3000                        // boot screen time
 #define APP_DISPLAY_INIT_DELAY 100                   // let the OLED power up after boot
+#define APP_DISPLAY_WAKE_TIME ((uint32)60 * 1000)    // button wakes a disabled display for 1 minute
 #define APP_ALARM_REPEAT_DELAY 10000                 // alarm sound repeats while alert is active
+#define APP_BUTTON_POLL_DELAY 50
+#define APP_BUTTON_LONG_PRESS 2000
 
 // Application Events
 #define APP_TICK_EVT            0x0001
@@ -30,7 +33,9 @@ extern "C" {
 #define APP_BUZZER_EVT          0x0008
 #define APP_DISPLAY_INIT_EVT    0x0010
 #define APP_DISPLAY_MAIN_EVT    0x0020
+#define APP_DISPLAY_TIMEOUT_EVT 0x0040
 #define APP_ALARM_EVT           0x0080
+#define APP_BUTTON_EVT          0x0100
 
 /*********************************************************************
  * MACROS
@@ -84,7 +89,7 @@ typedef struct
     RadiationSensorType_t SensorType;
     // new fields go to the end: settings saved by an older firmware are read up to their length
     uint8 BuzzerClicks;    // click on every registered particle
-    uint8 DisplayEnabled;  // OLED on/off
+    uint8 DisplayEnabled;  // OLED always on (otherwise only after a button press)
 }  application_config_t;
 
 /*********************************************************************
