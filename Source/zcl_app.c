@@ -37,6 +37,8 @@
 
 #include "calculate_urh.h"
 
+#include "app_buzzer.h"
+
 #include "DebugTrace.h"
 
 /*********************************************************************
@@ -58,6 +60,7 @@ static uint32 windowSum = 0;
 static uint8 reportSlot = 0;
 
 static bool lastAlertStatus = FALSE; // alert state sent over Zigbee (On/Off), evaluated once per minute
+static bool alarmActive = FALSE;     // local alert state, evaluated every slot
 
 /*********************************************************************
  * LOCAL FUNCTIONS
@@ -66,6 +69,8 @@ static bool lastAlertStatus = FALSE; // alert state sent over Zigbee (On/Off), e
 static void zclApp_Tick(void);
 static void zclApp_Report(void);
 static uint32 zclApp_CalculateUrh(uint16 cpm);
+static void zclApp_UpdateAlarm(bool alert);
+static void zclApp_ApplyConfig(void);
 static void zclApp_BasicResetCB(void);
 static void zclApp_RestoreAttributesFromNV(void);
 static void zclApp_SaveAttributesToNV(void);
@@ -109,6 +114,8 @@ void zclApp_Init(byte task_id) {
 
     LREP("Build %s \r\n", zclApp_DateCodeNT);
 
+    Buzzer_Init(zclApp_TaskID, APP_BUZZER_EVT);
+
     zclApp_InitCounter();
     zclApp_RegisterCounterCallback(zclApp_RadioactiveEventCB);
     osal_start_reload_timer(zclApp_TaskID, APP_TICK_EVT, APP_TICK_DELAY);
@@ -144,14 +151,27 @@ uint16 zclApp_event_loop(uint8 task_id, uint16 events) {
         return (events ^ APP_PULSE_EVT);
     }
 
+    if (events & APP_BUZZER_EVT) {
+        Buzzer_ProcessEvent();
+        return (events ^ APP_BUZZER_EVT);
+    }
+
     if (events & APP_TICK_EVT) {
         zclApp_Tick();
         return (events ^ APP_TICK_EVT);
     }
 
+    if (events & APP_ALARM_EVT) {
+        if (alarmActive && zclApp_Config.BuzzerFeedback) {
+            Buzzer_Alarm();
+        }
+        return (events ^ APP_ALARM_EVT);
+    }
+
     if (events & APP_SAVE_ATTRS_EVT) {
         LREPMaster("APP_SAVE_ATTRS_EVT\r\n");
         zclApp_SaveAttributesToNV();
+        zclApp_ApplyConfig();
         return (events ^ APP_SAVE_ATTRS_EVT);
     }
     return 0;
@@ -192,9 +212,37 @@ static void zclApp_Tick(void) {
         windowFilled++;
     }
 
+    // no local alarm on a partial first minute: a few early counts would trigger it
+    if (windowFilled >= APP_WINDOW_SLOTS) {
+        zclApp_UpdateAlarm(zclApp_CalculateUrh((uint16)windowSum) > zclApp_Config.AlertTreshold);
+    }
+
     if (++reportSlot >= APP_WINDOW_SLOTS) {
         reportSlot = 0;
         zclApp_Report();
+    }
+}
+
+static void zclApp_UpdateAlarm(bool alert) {
+    if (alert == alarmActive) {
+        return;
+    }
+    alarmActive = alert;
+    LREP("alarmActive=%d\r\n", alarmActive);
+    if (alert) {
+        if (zclApp_Config.BuzzerFeedback) {
+            Buzzer_Alarm();
+        }
+        osal_start_reload_timer(zclApp_TaskID, APP_ALARM_EVT, APP_ALARM_REPEAT_DELAY);
+    } else {
+        osal_stop_timerEx(zclApp_TaskID, APP_ALARM_EVT);
+    }
+}
+
+/* Called after settings were changed */
+static void zclApp_ApplyConfig(void) {
+    if (!zclApp_Config.BuzzerFeedback) {
+        Buzzer_Stop(); // silence an alarm that is playing right now
     }
 }
 
@@ -227,11 +275,13 @@ static void zclApp_BasicResetCB(void) {
     LREPMaster("BasicResetCB\r\n");
     zclApp_ResetAttributesToDefaultValues();
     zclApp_SaveAttributesToNV();
+    zclApp_ApplyConfig();
 }
 
 static ZStatus_t zclApp_ReadWriteAuthCB(afAddrType_t *srcAddr, zclAttrRec_t *pAttr, uint8 oper) {
     LREPMaster("AUTH CB called\r\n");
 
+    // the attribute is written after this callback returns: save and apply a bit later
     osal_start_timerEx(zclApp_TaskID, APP_SAVE_ATTRS_EVT, 2000);
     return ZSuccess;
 }

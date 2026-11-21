@@ -19,10 +19,14 @@ extern "C" {
 #define APP_TICK_DELAY 5000
 #define APP_WINDOW_SLOTS 12
 
+#define APP_ALARM_REPEAT_DELAY 10000                 // alarm sound repeats while alert is active
+
 // Application Events
 #define APP_TICK_EVT            0x0001
 #define APP_SAVE_ATTRS_EVT      0x0002
 #define APP_PULSE_EVT           0x0004
+#define APP_BUZZER_EVT          0x0008
+#define APP_ALARM_EVT           0x0080
 
 /*********************************************************************
  * MACROS
@@ -69,7 +73,7 @@ typedef struct
     uint16 SensorSensivity;
     uint32 AlertTreshold;
     uint8 LedFeedback;
-    uint8 BuzzerFeedback;
+    uint8 BuzzerFeedback;  // alarm sound when AlertTreshold is exceeded
     uint8 SensorsCount;
     RadiationSensorType_t SensorType;
 }  application_config_t;

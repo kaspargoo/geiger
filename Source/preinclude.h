@@ -42,6 +42,9 @@
 #error "Board type must be defined"
 #endif
 
+// Buzzer pin on port 1: P1.5 on the DIYRuZ board (passive piezo through a transistor)
+#define BUZZER_P1_PIN 5
+
 #if defined(HAL_BOARD_TARGET)
 #define APP_TX_POWER TX_PWR_PLUS_19
 #elif defined(HAL_BOARD_CHDTECH_DEV)
