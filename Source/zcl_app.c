@@ -95,7 +95,8 @@ void zclApp_Init(byte task_id) {
     // debug_str("Hello \r\n");
     DebugInit();
     zclApp_RestoreAttributesFromNV();
-    LREP("Sensivity %d led %d buzzer %d \r\n", zclApp_Config.SensorSensivity, zclApp_Config.LedFeedback, zclApp_Config.BuzzerFeedback);
+    LREP("Sensivity %d led %d alarm %d clicks %d\r\n", zclApp_Config.SensorSensivity, zclApp_Config.LedFeedback,
+         zclApp_Config.BuzzerFeedback, zclApp_Config.BuzzerClicks);
     // this is important to allow connects throught routers
     // to make this work, coordinator should be compiled with this flag #define TP2_LEGACY_ZC
     requestNewTrustCenterLinkKey = FALSE;
@@ -147,6 +148,9 @@ uint16 zclApp_event_loop(uint8 task_id, uint16 events) {
     if (events & APP_PULSE_EVT) {
         if (zclApp_Config.LedFeedback) {
             HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
+        }
+        if (zclApp_Config.BuzzerClicks) {
+            Buzzer_Click();
         }
         return (events ^ APP_PULSE_EVT);
     }
@@ -292,6 +296,15 @@ static void zclApp_SaveAttributesToNV(void) {
 }
 
 static void zclApp_RestoreAttributesFromNV(void) {
+    uint16 len = osal_nv_item_len(NW_APP_CONFIG);
+    if (len != 0 && len != sizeof(application_config_t)) {
+        // saved by a firmware with a different config size: keep the fields it had (new fields are
+        // appended at the end and keep their defaults), then store the item again with the new size
+        LREP("NV config size %d -> %d\r\n", len, sizeof(application_config_t));
+        osal_nv_read(NW_APP_CONFIG, 0, MIN(len, sizeof(application_config_t)), &zclApp_Config);
+        osal_nv_delete(NW_APP_CONFIG, len);
+    }
+
     uint8 status = osal_nv_item_init(NW_APP_CONFIG, sizeof(application_config_t), NULL);
     LREP("Restoring attributes from NV  status=%d \r\n", status);
     if (status == NV_ITEM_UNINIT) {

@@ -34,6 +34,7 @@ typedef struct {
     uint8 ms;
 } note_t;
 
+static const note_t clickNotes[] = {{TONE_4K, 3}};
 static const note_t alarmNotes[] = {{TONE_4K, 150}, {TONE_OFF, 80}, {TONE_3K, 150}, {TONE_OFF, 80},
                                     {TONE_4K, 150}, {TONE_OFF, 80}, {TONE_3K, 150}};
 
@@ -101,5 +102,11 @@ void Buzzer_Stop(void) {
 }
 
 bool Buzzer_IsBusy(void) { return melody != NULL; }
+
+void Buzzer_Click(void) {
+    if (!Buzzer_IsBusy()) {
+        buzzerPlay(clickNotes, sizeof(clickNotes) / sizeof(note_t));
+    }
+}
 
 void Buzzer_Alarm(void) { buzzerPlay(alarmNotes, sizeof(alarmNotes) / sizeof(note_t)); }

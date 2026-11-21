@@ -52,6 +52,7 @@ extern "C" {
 #define ATTRID_RADIATION_SENSORS_COUNT 0xF003
 #define ATTRID_RADIATION_SENSORS_TYPE 0xF004
 #define ATTRID_RADIATION_ALERT_TRESHOLD 0xF005
+#define ATTRID_RADIATION_BUZZER_CLICKS 0xF006
 
 #define ATTRID_RADIATION_EVENTS_PER_MINUTE 0xF001
 #define ATTRID_RADIATION_LEVEL_PER_HOUR 0xF002
@@ -76,6 +77,8 @@ typedef struct
     uint8 BuzzerFeedback;  // alarm sound when AlertTreshold is exceeded
     uint8 SensorsCount;
     RadiationSensorType_t SensorType;
+    // new fields go to the end: settings saved by an older firmware are read up to their length
+    uint8 BuzzerClicks;    // click on every registered particle
 }  application_config_t;
 
 /*********************************************************************

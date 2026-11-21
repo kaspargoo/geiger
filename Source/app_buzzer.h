@@ -12,6 +12,7 @@
 void Buzzer_Init(uint8 taskId, uint16 event);
 void Buzzer_ProcessEvent(void);
 
+void Buzzer_Click(void);         // ~3 ms tick, skipped if something else is playing
 void Buzzer_Alarm(void);         // ~1 s two-tone alarm
 void Buzzer_Stop(void);
 bool Buzzer_IsBusy(void);

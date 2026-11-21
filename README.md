@@ -62,6 +62,9 @@ Device support is implemented in zigbee2mqtt and SLS Gateway
 * alert_threshold - set the level in μR / h, when exceeded, the alarm will be triggered
 
 * buzzer - alarm sound while alert_threshold is exceeded (checked every 5 s over the last minute), repeats every 10 s
+* buzzer_clicks - click on every registered particle
+
+New settings such as buzzer_clicks need the external converter `z2m/diyruz_geiger.mjs` (Zigbee2MQTT 2.x) until the built-in definition is updated.
 
 * Led - turn on / off the LED displaying particle registration
 * rph - recorded value in μR / h
