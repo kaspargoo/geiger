@@ -9,6 +9,14 @@ All of them are built according to almost the same schemes associated with the f
 ### How to compile
 Follow this article https://zigdevwiki.github.io/Begin/IAR_install/
 
+The pre-build step runs `ver.py`, so Python must be on `PATH`.
+
+With IAR EW8051 10.x the linker fails with `Undefined external "?B"` / `"?IE"`. Add these two lines to Z-Stack's `Projects/zstack/Tools/CC2530DB/f8w2530.xcl`:
+```
+-D?B=F0
+-D?IE=A8
+```
+
 
 **ATTENTION! THE DEVICE CONTAINS A HIGH VOLTAGE OF 400 VOLTS**
 
