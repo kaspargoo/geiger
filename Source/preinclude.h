@@ -55,7 +55,7 @@
 #ifdef DO_DEBUG_UART
 #define HAL_UART TRUE
 #define HAL_UART_DMA 1
-#define INT_HEAP_LEN (2685 - 0x4B - 0xBB)
+#define INT_HEAP_LEN (2685 - 0x4B - 0xBB - 0x50) // - 0x50: room for the application state
 #endif
 
 #ifdef DO_DEBUG_MT

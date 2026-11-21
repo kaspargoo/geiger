@@ -38,17 +38,6 @@
 #include "calculate_urh.h"
 
 #include "DebugTrace.h"
-/*********************************************************************
- * MACROS
- */
-
-/*********************************************************************
- * CONSTANTS
- */
-
-/*********************************************************************
- * TYPEDEFS
- */
 
 /*********************************************************************
  * GLOBAL VARIABLES
@@ -58,18 +47,25 @@ extern bool requestNewTrustCenterLinkKey;
 byte zclApp_TaskID;
 
 /*********************************************************************
- * GLOBAL FUNCTIONS
- */
-
-/*********************************************************************
  * LOCAL VARIABLES
  */
+
+// 1 minute sliding window built from 5 s slots
+static uint16 windowSlots[APP_WINDOW_SLOTS];
+static uint8 windowPos = 0;
+static uint8 windowFilled = 0;
+static uint32 windowSum = 0;
+static uint8 reportSlot = 0;
+
+static bool lastAlertStatus = FALSE; // alert state sent over Zigbee (On/Off), evaluated once per minute
 
 /*********************************************************************
  * LOCAL FUNCTIONS
  */
 
+static void zclApp_Tick(void);
 static void zclApp_Report(void);
+static uint32 zclApp_CalculateUrh(uint16 cpm);
 static void zclApp_BasicResetCB(void);
 static void zclApp_RestoreAttributesFromNV(void);
 static void zclApp_SaveAttributesToNV(void);
@@ -115,11 +111,10 @@ void zclApp_Init(byte task_id) {
 
     zclApp_InitCounter();
     zclApp_RegisterCounterCallback(zclApp_RadioactiveEventCB);
-    osal_start_reload_timer(zclApp_TaskID, APP_REPORT_EVT, APP_REPORT_DELAY);
+    osal_start_reload_timer(zclApp_TaskID, APP_TICK_EVT, APP_TICK_DELAY);
 }
 
 uint16 zclApp_event_loop(uint8 task_id, uint16 events) {
-    LREP("events 0x%x \r\n", events);
     if (events & SYS_EVENT_MSG) {
         afIncomingMSGPacket_t *MSGpkt;
         while ((MSGpkt = (afIncomingMSGPacket_t *)osal_msg_receive(zclApp_TaskID))) {
@@ -141,10 +136,17 @@ uint16 zclApp_event_loop(uint8 task_id, uint16 events) {
         // return unprocessed events
         return (events ^ SYS_EVENT_MSG);
     }
-    if (events & APP_REPORT_EVT) {
-        LREPMaster("APP_REPORT_EVT\r\n");
-        zclApp_Report();
-        return (events ^ APP_REPORT_EVT);
+
+    if (events & APP_PULSE_EVT) {
+        if (zclApp_Config.LedFeedback) {
+            HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
+        }
+        return (events ^ APP_PULSE_EVT);
+    }
+
+    if (events & APP_TICK_EVT) {
+        zclApp_Tick();
+        return (events ^ APP_TICK_EVT);
     }
 
     if (events & APP_SAVE_ATTRS_EVT) {
@@ -155,33 +157,52 @@ uint16 zclApp_event_loop(uint8 task_id, uint16 events) {
     return 0;
 }
 
-bool lastAlertStatus = FALSE;
-
-static void zclApp_Report(void) {
-    halIntState_t intState;
-
-    HAL_ENTER_CRITICAL_SECTION(intState);
-    zclApp_RadiationEventsPerMinute = zclApp_Port0CounterValue;
-    zclApp_Port0CounterValue = 0;
-    HAL_EXIT_CRITICAL_SECTION(intState);
-
-    float countsPerSecond = zclApp_RadiationEventsPerMinute / 60.0 / zclApp_Config.SensorsCount;
+static uint32 zclApp_CalculateUrh(uint16 cpm) {
+    uint8 sensors = zclApp_Config.SensorsCount ? zclApp_Config.SensorsCount : 1;
+    float countsPerSecond = cpm / 60.0 / sensors;
 
     switch (zclApp_Config.SensorType) {
     case SBM_19:
-        zclApp_RadiationLevelParrotsPerHour = calculate_urh_sbm19(countsPerSecond);
-        break;
+        return calculate_urh_sbm19(countsPerSecond);
 
     case SBM_20:
-        zclApp_RadiationLevelParrotsPerHour = calculate_urh_sbm20(countsPerSecond);
-        break;
+        return calculate_urh_sbm20(countsPerSecond);
 
         // TODO: Add other sensors here
 
     default:
-        zclApp_RadiationLevelParrotsPerHour = (uint32)(countsPerSecond * zclApp_Config.SensorSensivity);
-        break;
+        return (uint32)(countsPerSecond * zclApp_Config.SensorSensivity);
     }
+}
+
+static void zclApp_Tick(void) {
+    halIntState_t intState;
+    uint16 slotCount;
+
+    HAL_ENTER_CRITICAL_SECTION(intState);
+    slotCount = zclApp_Port0CounterValue;
+    zclApp_Port0CounterValue = 0;
+    HAL_EXIT_CRITICAL_SECTION(intState);
+
+    windowSum -= windowSlots[windowPos];
+    windowSlots[windowPos] = slotCount;
+    windowSum += slotCount;
+    windowPos = (windowPos + 1) % APP_WINDOW_SLOTS;
+    if (windowFilled < APP_WINDOW_SLOTS) {
+        windowFilled++;
+    }
+
+    if (++reportSlot >= APP_WINDOW_SLOTS) {
+        reportSlot = 0;
+        zclApp_Report();
+    }
+}
+
+static void zclApp_Report(void) {
+    // the window holds exactly the last minute here: reports happen every APP_WINDOW_SLOTS slots
+    zclApp_RadiationEventsPerMinute = (uint16)windowSum;
+    zclApp_RadiationLevelParrotsPerHour = zclApp_CalculateUrh(zclApp_RadiationEventsPerMinute);
+
     bool alertStatus = zclApp_RadiationLevelParrotsPerHour > zclApp_Config.AlertTreshold;
     afAddrType_t inderect_DstAddr = {.addrMode = (afAddrMode_t)AddrNotPresent, .endPoint = 0, .addr.shortAddr = 0};
     LREP("AlertTreshold=%ld radiationLevel=%ld\r\n", zclApp_Config.AlertTreshold, zclApp_RadiationLevelParrotsPerHour);
@@ -233,16 +254,10 @@ static void zclApp_RestoreAttributesFromNV(void) {
     }
 }
 
-void zclApp_RadioactiveEventCB(uint8 portNum) {
-    LREP("zclApp_RadioactiveEventCB port=%d led=%d buzzer=%d\r\n", portNum, zclApp_Config.LedFeedback, zclApp_Config.BuzzerFeedback);
+/* Runs in the port 0 interrupt: only flag the event, the task does the work */
+static void zclApp_RadioactiveEventCB(uint8 portNum) {
     if (portNum == 0) {
-        if (zclApp_Config.LedFeedback) {
-            HalLedSet(HAL_LED_1, HAL_LED_MODE_BLINK);
-        }
-
-        if (zclApp_Config.BuzzerFeedback) {
-            // TODO: buzzer feedback
-        }
+        osal_set_event(zclApp_TaskID, APP_PULSE_EVT);
     }
 }
 /****************************************************************************
