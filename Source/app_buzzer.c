@@ -3,9 +3,9 @@
 #include "hal_mcu.h"
 
 /*
- * BUZZER_P1_PIN (preinclude.h) selects the port 1 pin of the buzzer.
- * Timer 3 runs in modulo mode and its overflow interrupt toggles the pin, so any
- * port 1 pin works. The interrupt only runs while a tone is playing.
+ * BUZZER_P1_PIN (preinclude.h) selects the port 1 pin of the buzzer. Timer 3 runs in modulo mode:
+ *  - P1.4 is Timer 3 channel 1 (alt.1 location): the timer toggles the pin itself, no CPU load
+ *  - any other pin is toggled from the Timer 3 overflow interrupt, which only runs while a tone plays
  */
 #ifndef BUZZER_P1_PIN
 #error "BUZZER_P1_PIN must be defined"
@@ -15,12 +15,20 @@
 #define BUZZER_PIN_SBIT BUZZER_PIN_SBIT_X(BUZZER_P1_PIN)
 #define BUZZER_PIN_BV BV(BUZZER_P1_PIN)
 
+#if BUZZER_P1_PIN == 4
+#define BUZZER_TIMER_OUTPUT
+#endif
+
 #define T3CTL_DIV16 0x80
 #define T3CTL_DIV32 0xA0
 #define T3CTL_START 0x10
 #define T3CTL_OVFIM 0x08
 #define T3CTL_CLEAR 0x04
 #define T3CTL_MODULO 0x02
+#define T3CCTL_COMPARE_TOGGLE 0x14 // compare mode, toggle output on compare, no interrupt
+
+#define PERCFG_T3CFG 0x20
+#define P2SEL_PRI2P1 0x20 // Timer 3 has priority over USART1 on P1.4
 
 /*
  * Tones. f = 32 MHz / (div * (CC0 + 1) * 2) (one toggle per timer period halves the frequency)
@@ -45,6 +53,29 @@ static uint16 buzzerEvent;
 static const note_t *melody = NULL;
 static uint8 melodyLen = 0;
 static uint8 melodyPos = 0;
+
+#ifdef BUZZER_TIMER_OUTPUT
+
+static void buzzerOff(void) {
+    T3CTL = 0;
+    P1SEL &= ~BUZZER_PIN_BV; // back to GPIO
+    BUZZER_PIN_SBIT = 0;     // keep the transistor closed between notes
+}
+
+static void buzzerToneOn(uint8 tone) {
+    buzzerOff();
+    if (tone == TONE_OFF) {
+        return;
+    }
+    T3CCTL1 = T3CCTL_COMPARE_TOGGLE;
+    T3CC1 = 0;
+    T3CC0 = toneCC0[tone];
+    T3CTL = toneDiv[tone] | T3CTL_MODULO | T3CTL_CLEAR;
+    P1SEL |= BUZZER_PIN_BV; // pin driven by the timer
+    T3CTL |= T3CTL_START;
+}
+
+#else
 
 HAL_ISR_FUNCTION(buzzerTimer3Isr, T3_VECTOR) {
     T3OVFIF = 0;
@@ -71,6 +102,8 @@ static void buzzerToneOn(uint8 tone) {
     T3CTL |= T3CTL_START;
 }
 
+#endif
+
 static void buzzerPlay(const note_t *notes, uint8 len) {
     osal_stop_timerEx(buzzerTaskId, buzzerEvent);
     melody = notes;
@@ -82,7 +115,11 @@ static void buzzerPlay(const note_t *notes, uint8 len) {
 void Buzzer_Init(uint8 taskId, uint16 event) {
     buzzerTaskId = taskId;
     buzzerEvent = event;
-    P1SEL &= ~BUZZER_PIN_BV; // GPIO
+#ifdef BUZZER_TIMER_OUTPUT
+    PERCFG &= ~PERCFG_T3CFG; // Timer 3 at alt.1 location (P1.3/P1.4)
+    P2SEL |= P2SEL_PRI2P1;
+#endif
+    P1SEL &= ~BUZZER_PIN_BV; // GPIO until a tone plays
     P1DIR |= BUZZER_PIN_BV;
     buzzerOff();
 }

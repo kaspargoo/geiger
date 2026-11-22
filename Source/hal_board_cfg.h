@@ -61,24 +61,19 @@
 #define HAL_LED_BLINK_DELAY()   st( { volatile uint32 i; for (i=0; i<0x5800; i++) { }; } )
 
 #if defined(HAL_BOARD_TARGET)
+#if defined(HAL_BOARD_ZIGGEIGER)
+  // LED and buzzer swapped on the PCB: LED on P1.5, buzzer on P1.4 (Timer 3 output)
+  #define LED1_BV           BV(5)
+  #define LED1_SBIT         P1_5
+#else
   #define LED1_BV           BV(4)
   #define LED1_SBIT         P1_4
+#endif
   #define LED1_DDR          P1DIR
   #define LED1_POLARITY     ACTIVE_HIGH
 
-  #define LED4_BV           BV(4)
-  #define LED4_SBIT         P1_4
-  #define LED4_DDR          P1DIR
-  #define LED4_POLARITY     ACTIVE_HIGH
-
-  #define LED4_BV           BV(4)
-  #define LED4_SBIT         P1_4
-  #define LED4_DDR          P1DIR
-  #define LED4_POLARITY     ACTIVE_HIGH
-
-
-  #define LED4_BV           BV(4)
-  #define LED4_SBIT         P1_4
+  #define LED4_BV           LED1_BV
+  #define LED4_SBIT         LED1_SBIT
   #define LED4_DDR          P1DIR
   #define LED4_POLARITY     ACTIVE_HIGH
 

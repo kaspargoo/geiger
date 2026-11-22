@@ -11,6 +11,12 @@ Follow this article https://zigdevwiki.github.io/Begin/IAR_install/
 
 The pre-build step runs `ver.py`, so Python must be on `PATH`.
 
+Build configurations (output in `firmwares/<configuration>.hex`):
+* DIYRuZ_Geiger - the original board, router (LED P1.4, buzzer P1.5)
+* DIYRuZ_Geiger_ED - the original board, end device
+* ZigGeiger - original board with LED and buzzer swapped on the PCB (LED P1.5, buzzer P1.4). On P1.4 Timer 3 drives the buzzer directly; on P1.5 the tone is toggled from a timer interrupt. Both sound the same.
+* CHDTECH_DEV - development board with debug output on UART
+
 With IAR EW8051 10.x the linker fails with `Undefined external "?B"` / `"?IE"`. Add these two lines to Z-Stack's `Projects/zstack/Tools/CC2530DB/f8w2530.xcl`:
 ```
 -D?B=F0

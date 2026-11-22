@@ -42,8 +42,16 @@
 #error "Board type must be defined"
 #endif
 
-// Buzzer pin on port 1: P1.5 on the DIYRuZ board (passive piezo through a transistor)
+/*
+ * Buzzer pin on port 1 (passive piezo through a transistor).
+ * HAL_BOARD_ZIGGEIGER: DIYRuZ board with LED and buzzer swapped, so the buzzer is on P1.4
+ * where Timer 3 drives it directly (LED on P1.5, see hal_board_cfg.h).
+ */
+#if defined(HAL_BOARD_ZIGGEIGER)
+#define BUZZER_P1_PIN 4
+#else
 #define BUZZER_P1_PIN 5
+#endif
 
 // Optional OLED SSD1306 128x32 (I2C address 0x3C) on bit-banged I2C, detected at boot
 #define OCM_CLK_PORT 0 // SCL = P0.5
@@ -60,7 +68,11 @@
 
 #if defined(HAL_BOARD_TARGET)
 #define APP_TX_POWER TX_PWR_PLUS_19
-#define APP_HW_NAME "DIYRuZ" // shown on the boot screen
+#if defined(HAL_BOARD_ZIGGEIGER)
+#define APP_HW_NAME "ZigGeiger" // shown on the boot screen
+#else
+#define APP_HW_NAME "DIYRuZ"
+#endif
 #elif defined(HAL_BOARD_CHDTECH_DEV)
 #define APP_TX_POWER TX_PWR_PLUS_4
 #define APP_HW_NAME "CHDTECH dev"
