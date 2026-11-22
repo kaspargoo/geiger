@@ -15,10 +15,12 @@ extern "C" {
  * CONSTANTS
  */
 // Counts are collected in 5 s slots; the last 12 slots form the 1 minute window.
-// Zigbee report every 12 slots (1 minute).
+// Zigbee report every 12 slots (1 minute), display refresh every slot.
 #define APP_TICK_DELAY 5000
 #define APP_WINDOW_SLOTS 12
 
+#define APP_SPLASH_DELAY 3000                        // boot screen time
+#define APP_DISPLAY_INIT_DELAY 100                   // let the OLED power up after boot
 #define APP_ALARM_REPEAT_DELAY 10000                 // alarm sound repeats while alert is active
 
 // Application Events
@@ -26,6 +28,8 @@ extern "C" {
 #define APP_SAVE_ATTRS_EVT      0x0002
 #define APP_PULSE_EVT           0x0004
 #define APP_BUZZER_EVT          0x0008
+#define APP_DISPLAY_INIT_EVT    0x0010
+#define APP_DISPLAY_MAIN_EVT    0x0020
 #define APP_ALARM_EVT           0x0080
 
 /*********************************************************************
@@ -53,6 +57,7 @@ extern "C" {
 #define ATTRID_RADIATION_SENSORS_TYPE 0xF004
 #define ATTRID_RADIATION_ALERT_TRESHOLD 0xF005
 #define ATTRID_RADIATION_BUZZER_CLICKS 0xF006
+#define ATTRID_RADIATION_DISPLAY_ENABLED 0xF007
 
 #define ATTRID_RADIATION_EVENTS_PER_MINUTE 0xF001
 #define ATTRID_RADIATION_LEVEL_PER_HOUR 0xF002
@@ -79,6 +84,7 @@ typedef struct
     RadiationSensorType_t SensorType;
     // new fields go to the end: settings saved by an older firmware are read up to their length
     uint8 BuzzerClicks;    // click on every registered particle
+    uint8 DisplayEnabled;  // OLED on/off
 }  application_config_t;
 
 /*********************************************************************

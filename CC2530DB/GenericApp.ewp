@@ -3442,6 +3442,27 @@
             <file>
                 <name>$PROJ_DIR$\..\Source\app_buzzer.h</name>
             </file>
+            <file>
+                <name>$PROJ_DIR$\..\Source\app_display.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\Source\app_display.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\Source\oled.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\Source\oled.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\Source\oledfont.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\zstack-lib\hal_i2c.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\zstack-lib\hal_i2c.h</name>
+            </file>
         </group>
         <file>
             <name>$PROJ_DIR$\..\Source\isr_counter.c</name>

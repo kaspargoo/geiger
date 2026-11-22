@@ -45,10 +45,18 @@
 // Buzzer pin on port 1: P1.5 on the DIYRuZ board (passive piezo through a transistor)
 #define BUZZER_P1_PIN 5
 
+// Optional OLED SSD1306 128x32 (I2C address 0x3C) on bit-banged I2C, detected at boot
+#define OCM_CLK_PORT 0 // SCL = P0.5
+#define OCM_CLK_PIN 5
+#define OCM_DATA_PORT 0 // SDA = P0.6
+#define OCM_DATA_PIN 6
+
 #if defined(HAL_BOARD_TARGET)
 #define APP_TX_POWER TX_PWR_PLUS_19
+#define APP_HW_NAME "DIYRuZ" // shown on the boot screen
 #elif defined(HAL_BOARD_CHDTECH_DEV)
 #define APP_TX_POWER TX_PWR_PLUS_4
+#define APP_HW_NAME "CHDTECH dev"
 #define DO_DEBUG_UART
 // #define DO_DEBUG_MT
 #endif

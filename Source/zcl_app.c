@@ -38,6 +38,7 @@
 #include "calculate_urh.h"
 
 #include "app_buzzer.h"
+#include "app_display.h"
 
 #include "DebugTrace.h"
 
@@ -62,6 +63,9 @@ static uint8 reportSlot = 0;
 static bool lastAlertStatus = FALSE; // alert state sent over Zigbee (On/Off), evaluated once per minute
 static bool alarmActive = FALSE;     // local alert state, evaluated every slot
 
+static bool displayReady = FALSE; // splash screen is over
+static display_data_t displayData;
+
 /*********************************************************************
  * LOCAL FUNCTIONS
  */
@@ -71,6 +75,7 @@ static void zclApp_Report(void);
 static uint32 zclApp_CalculateUrh(uint16 cpm);
 static void zclApp_UpdateAlarm(bool alert);
 static void zclApp_ApplyConfig(void);
+static display_net_t zclApp_NetState(void);
 static void zclApp_BasicResetCB(void);
 static void zclApp_RestoreAttributesFromNV(void);
 static void zclApp_SaveAttributesToNV(void);
@@ -95,8 +100,8 @@ void zclApp_Init(byte task_id) {
     // debug_str("Hello \r\n");
     DebugInit();
     zclApp_RestoreAttributesFromNV();
-    LREP("Sensivity %d led %d alarm %d clicks %d\r\n", zclApp_Config.SensorSensivity, zclApp_Config.LedFeedback,
-         zclApp_Config.BuzzerFeedback, zclApp_Config.BuzzerClicks);
+    LREP("Sensivity %d led %d alarm %d clicks %d display %d\r\n", zclApp_Config.SensorSensivity, zclApp_Config.LedFeedback,
+         zclApp_Config.BuzzerFeedback, zclApp_Config.BuzzerClicks, zclApp_Config.DisplayEnabled);
     // this is important to allow connects throught routers
     // to make this work, coordinator should be compiled with this flag #define TP2_LEGACY_ZC
     requestNewTrustCenterLinkKey = FALSE;
@@ -116,6 +121,10 @@ void zclApp_Init(byte task_id) {
     LREP("Build %s \r\n", zclApp_DateCodeNT);
 
     Buzzer_Init(zclApp_TaskID, APP_BUZZER_EVT);
+
+    displayData.clicks = zclApp_Config.BuzzerClicks;
+    displayData.estimate = TRUE;
+    osal_start_timerEx(zclApp_TaskID, APP_DISPLAY_INIT_EVT, APP_DISPLAY_INIT_DELAY);
 
     zclApp_InitCounter();
     zclApp_RegisterCounterCallback(zclApp_RadioactiveEventCB);
@@ -172,6 +181,27 @@ uint16 zclApp_event_loop(uint8 task_id, uint16 events) {
         return (events ^ APP_ALARM_EVT);
     }
 
+    if (events & APP_DISPLAY_INIT_EVT) {
+        if (Display_Init()) {
+            osal_start_timerEx(zclApp_TaskID, APP_DISPLAY_MAIN_EVT, APP_SPLASH_DELAY);
+        } else {
+            // no display: displayReady stays FALSE, so no display work is ever done
+            LREPMaster("No display found\r\n");
+        }
+        return (events ^ APP_DISPLAY_INIT_EVT);
+    }
+
+    if (events & APP_DISPLAY_MAIN_EVT) {
+        displayReady = TRUE;
+        displayData.net = zclApp_NetState();
+        if (zclApp_Config.DisplayEnabled) {
+            Display_ShowMain(&displayData);
+        } else {
+            Display_Power(FALSE);
+        }
+        return (events ^ APP_DISPLAY_MAIN_EVT);
+    }
+
     if (events & APP_SAVE_ATTRS_EVT) {
         LREPMaster("APP_SAVE_ATTRS_EVT\r\n");
         zclApp_SaveAttributesToNV();
@@ -199,9 +229,32 @@ static uint32 zclApp_CalculateUrh(uint16 cpm) {
     }
 }
 
+static display_net_t zclApp_NetState(void) {
+    switch (devState) {
+    case DEV_ROUTER:
+    case DEV_END_DEVICE:
+    case DEV_ZB_COORD:
+        return NET_ONLINE;
+    case DEV_NWK_ORPHAN:
+    case DEV_NWK_SEC_REJOIN_CURR_CHANNEL:
+    case DEV_NWK_SEC_REJOIN_ALL_CHANNEL:
+    case DEV_NWK_TC_REJOIN_CURR_CHANNEL:
+    case DEV_NWK_TC_REJOIN_ALL_CHANNEL:
+    case DEV_NWK_BACKOFF:
+        return NET_LOST;
+    case DEV_NWK_DISC:
+    case DEV_NWK_JOINING:
+    case DEV_END_DEVICE_UNAUTH:
+        return NET_JOINING;
+    default:
+        return NET_NONE;
+    }
+}
+
 static void zclApp_Tick(void) {
     halIntState_t intState;
     uint16 slotCount;
+    uint16 cpm;
 
     HAL_ENTER_CRITICAL_SECTION(intState);
     slotCount = zclApp_Port0CounterValue;
@@ -216,14 +269,28 @@ static void zclApp_Tick(void) {
         windowFilled++;
     }
 
-    // no local alarm on a partial first minute: a few early counts would trigger it
+    // during the first minute extrapolate the partial window to counts per minute
+    cpm = (uint16)(windowFilled < APP_WINDOW_SLOTS ? windowSum * APP_WINDOW_SLOTS / windowFilled : windowSum);
+
+    displayData.cpm = cpm;
+    displayData.urh = zclApp_CalculateUrh(cpm);
+    displayData.estimate = windowFilled < APP_WINDOW_SLOTS;
+    displayData.net = zclApp_NetState();
+    displayData.clicks = zclApp_Config.BuzzerClicks;
+
+    // no local alarm on an extrapolated first-minute value: a few early counts would trigger it
     if (windowFilled >= APP_WINDOW_SLOTS) {
-        zclApp_UpdateAlarm(zclApp_CalculateUrh((uint16)windowSum) > zclApp_Config.AlertTreshold);
+        zclApp_UpdateAlarm(displayData.urh > zclApp_Config.AlertTreshold);
     }
+    displayData.alert = alarmActive;
 
     if (++reportSlot >= APP_WINDOW_SLOTS) {
         reportSlot = 0;
         zclApp_Report();
+    }
+
+    if (displayReady && Display_IsOn()) {
+        Display_Update(&displayData);
     }
 }
 
@@ -245,8 +312,22 @@ static void zclApp_UpdateAlarm(bool alert) {
 
 /* Called after settings were changed */
 static void zclApp_ApplyConfig(void) {
+    displayData.clicks = zclApp_Config.BuzzerClicks;
     if (!zclApp_Config.BuzzerFeedback) {
         Buzzer_Stop(); // silence an alarm that is playing right now
+    }
+    if (!displayReady) {
+        return; // the splash screen handler applies DisplayEnabled when it finishes
+    }
+    if (zclApp_Config.DisplayEnabled) {
+        if (!Display_IsOn()) {
+            Display_Power(TRUE);
+            Display_ShowMain(&displayData);
+        } else {
+            Display_Update(&displayData);
+        }
+    } else if (Display_IsOn()) {
+        Display_Power(FALSE);
     }
 }
 
